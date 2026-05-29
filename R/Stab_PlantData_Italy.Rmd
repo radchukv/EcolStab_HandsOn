@@ -17,7 +17,7 @@ The surveys were conducted in summers of 2002, 2003, 2015, 2020, and 2024. Surve
 
 Since part of the data over time was recorded as presence/absence and another part as cover, we have to use presence/absence for the whole time series.
 
-When checking the data at the plot level, it occurs that the column 'spp_presence_cover' has following values: "p", "2", "+", "r", "1", "4", "3", "5". Since metadata does not explain what 'r' and '+' stands for (and does not mention them at all as values for this variable), I  assume that 'p' - presence and 'r' - absence. And for the cover I assume that '1' is absence and all other levels indicate presence. For now I also assume that '+' also indicates presence... 
+When checking the data at the plot level, it occurs that the column 'spp_presence_cover' has following values: "p", "2", "+", "r", "1", "4", "3", "5". All of these denote presence (according to data collectors; pers communication), so assigning those all to presence ('1').
 
 # Read in the data
 ```{r read in the data}

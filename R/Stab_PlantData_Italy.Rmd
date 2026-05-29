@@ -28,8 +28,7 @@ unique(dat$spp_presence_cover)
 
 # assigning presence-absence throughout
 dat_pa <- dat %>% 
-  mutate(pa = case_when(spp_presence_cover %in% c("2", "3", "4", "5", "p", "+") ~ 1,
-                        spp_presence_cover %in% c("1", "r") ~ 0),
+  mutate(pa = case_when(spp_presence_cover %in% c("2", "3", "4", "5", "p", "+", "1", "r") ~ 1),
          Plot = as_factor(Plot)) 
 
 str(dat_pa)
@@ -72,7 +71,7 @@ herb_plot9
 
 ```
 
-This makes it clear that we do not records for each species each year. So, we are getting NAs. Here NA likely actually means the absence of a species in that year, as it seems that during the sampling all encountered species were registered. So, we assume NAs mean absence. This has to be checked with data collectors.
+This makes it clear that we do not have records for the absence of each species each year. So, when the species was not recorded, we are getting NAs. So, NAs mean absence. 
 
 ```{r resistance calc}
 herb_plot9_Nas <- herb_plot9 %>% 
@@ -112,4 +111,4 @@ recovery_extent(type = 'compositional', method = 'jaccard', binary = 'TRUE',
                                 comm_t = "Year", t_rec = 2024, comm_d = herb_plot9_Nas,
            comm_b = herb_plot9_Nas_b20)
 ```
-The community seems to be even more dissimilar in 2024 compared to how its composition in 2020.
+The community seems to be even more dissimilar in 2024 compared to its composition in 2020.

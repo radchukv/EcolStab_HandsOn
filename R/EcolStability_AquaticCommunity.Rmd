@@ -15,7 +15,7 @@ library(dplyr)
 library(ggplot2)
 library(vegan)
 library(viridis)
-source("custom_aesthetics.R")
+source("./R/custom_aesthetics.R")
 
 label_intensity <- function(intensity, mu) {
   paste0("Conc = ", intensity, " micro g/L")
@@ -120,18 +120,18 @@ ggplot(aes(
       group = gp,
       colour = gp
     )) +
-    geom_line(lwd = 2) +
+    geom_line(lwd = 1.2) +
     geom_point(size = 1) +
     geom_vline(
       aes(xintercept = 0),
       linetype = 2,
-      lwd = 1.2,
+      lwd = 1,
       colour = "black"
     ) +
   geom_vline(
       aes(xintercept = 28),
       linetype = 4,
-      lwd = 1.2,
+      lwd = 1,
       colour = "darkorchid"
     ) +
     scale_colour_manual(values = gp_colours_full) +

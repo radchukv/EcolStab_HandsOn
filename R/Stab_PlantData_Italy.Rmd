@@ -10,7 +10,6 @@ knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', fig.width = 6, fig.heig
 library(knitr)
 library(estar)
 library(tidyverse)
-set.seed(1)
 ```
 
 # Introduction to the dataset
@@ -101,7 +100,7 @@ resistance(type = 'compositional', method = 'jaccard', binary = 'TRUE',
 ```
 
 We cannot really compute recovery rate as that requires that we have the control/baseline community available over the whole period...
-For that same reason eov is also not possible to compute.
+For that same reason oev is also not possible to compute.
 And for recovery extent, we can look at the extent of recovery in 2024 (assuming that until then the community had recovered from the extreme event in 2017.
 
 ```{r recov calc}

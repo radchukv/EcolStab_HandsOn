@@ -20,7 +20,6 @@ source("./R/custom_aesthetics.R")
 label_intensity <- function(intensity, mu) {
   paste0("Conc = ", intensity, " micro g/L")
 }
-set.seed(123)
 ```
 
 # Overview of the data

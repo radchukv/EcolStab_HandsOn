@@ -1,0 +1,115 @@
+---
+title: "Stability Analyses of the plant data from Montagna di Torricchio Reserve"
+author: "Viktoriia Radchuk & Charlotte Kunze"
+date: "22/05/2026"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', fig.width = 6, fig.height = 6)
+library(knitr)
+library(estar)
+library(tidyverse)
+set.seed(1)
+```
+
+# Introduction to the dataset
+The surveys were conducted in summers of 2002, 2003, 2015, 2020, and 2024. Surveys were conducted at: plot-level (100 m2) and subplot-level (1 m2). At the plot level, species presence only (indicated as “p” in the dataset) was recorded in 2002 and 2003, while plant species presence and abundance (measured as Braun-Blanquet scale) were recorded in 2015, 2020, and 2024. At the sub-plot level, species presence and abundance were recorded in 2002 and 2003, while species presence only was recorded in 2015, 2020, and 2024.
+
+Since part of the data over time was recorded as presence/absence and another part as cover, we have to use presence/absence for the whole time series.
+
+When checking the data at the plot level, it occurs that the column 'spp_presence_cover' has following values: "p", "2", "+", "r", "1", "4", "3", "5". Since metadata does not explain what 'r' and '+' stands for (and does not mention them at all as values for this variable), I  assume that 'p' - presence and 'r' - absence. And for the cover I assume that '1' is absence and all other levels indicate presence. For now I also assume that '+' also indicates presence... 
+
+# Read in the data
+```{r read in the data}
+dat <- read.csv('./data/Montagna_Totticchio_Plot.csv')
+str(dat)
+unique(dat$spp_presence_cover)
+
+# assigning presence-absence throughout
+dat_pa <- dat %>% 
+  mutate(pa = case_when(spp_presence_cover %in% c("2", "3", "4", "5", "p", "+") ~ 1,
+                        spp_presence_cover %in% c("1", "r") ~ 0),
+         Plot = as_factor(Plot)) 
+
+str(dat_pa)
+```
+
+# Let's look at herbaceous plants only
+```{r herb}
+dat_herb <- dat_pa %>% 
+  filter(Layer == 'C')
+
+str(dat_herb)
+unique(dat_herb$Year)
+```
+
+
+Now we have presence-absence data for herbaceous plant community. Since we only have 5 years, looking at invariability is not possible.
+We can, however, ask how resistance and recovery of communities were affected by such climatic events as heatwaves and droughts. As there seems to be no records (on internet) of drought and heatwave events specifically for this nature, reserve, I searched for the Marche region more broadly. The years with the clearest evidence of both drought and heat stress for the Marche region are:
+
+2003
+2007
+2012
+2017
+2022
+
+Among these, 2022 appears to have been the most extreme in the Marche regional climate record.
+
+# Resistance to and recovery from extreme events
+
+It is somewhat difficult to assess resistance to any of these events as most of them occurred in the gaps between samplings (so no direct response can be measured). The only one that was recorded is 2003 - but then there was a 12-yr long period without the record, so we won't be able to assess the effects of this event on resistance properly.
+
+Okay, let us as a proxy use years 2015 (for drought and heatwaves in 2017) and 2020 (for extreme 2022). Let us compute resistance as compositional distance to the pre-disturbed community (using the year before the climatic event as a pre-disturbed state)
+```{r resistance_prep}
+# subset one plot
+herb_plot9 <- dat_herb %>% 
+  filter(Plot == 9) %>% 
+  select(-c(Plot, Layer, Bartolucci.et.al_2024, spp_presence_cover)) %>% 
+  pivot_wider(names_from = Pignatti_1982, values_from = pa)
+
+herb_plot9
+
+```
+
+This makes it clear that we do not records for each species each year. So, we are getting NAs. Here NA likely actually means the absence of a species in that year, as it seems that during the sampling all encountered species were registered. So, we assume NAs mean absence. This has to be checked with data collectors.
+
+```{r resistance calc}
+herb_plot9_Nas <- herb_plot9 %>% 
+   mutate_all(~replace_na(., 0))
+
+# calculate resistance between 2020 and 2024
+herb_plot9_Nas_b24 <- herb_plot9_Nas %>%  ## we create the 'pre-disturbed' dataset for computing the distance. 
+  filter(Year == 2020) %>% 
+  mutate(Year = 2024)  # we give year 2020 a label 2024 now, so that it can be 'combined' with 2024 in the data with disturbed 
+# community
+
+resistance(type = 'compositional', method = 'jaccard', binary = 'TRUE',
+                                 res_time = "defined", comm_t = "Year", res_t = 2024, comm_d = herb_plot9_Nas,
+           comm_b = herb_plot9_Nas_b24)   
+
+
+# calculate resistance between 2015 and 2020
+herb_plot9_Nas_b20 <- herb_plot9_Nas %>%  ## we create the 'pre-disturbed' dataset for computing the distance. 
+  filter(Year == 2015) %>% 
+  mutate(Year = 2020)  # we give year 2015 a label 2020 now, so that it can be 'combined' with 2024 in the data with disturbed 
+# community
+
+resistance(type = 'compositional', method = 'jaccard', binary = 'TRUE',
+                                 res_time = "defined", comm_t = "Year", res_t = 2020, comm_d = herb_plot9_Nas,
+           comm_b = herb_plot9_Nas_b20)
+
+```
+
+We cannot really compute recovery rate as that requires that we have the control/baseline community available over the whole period...
+For that same reason eov is also not possible to compute.
+And for recovery extent, we can look at the extent of recovery in 2024 (assuming that until then the community had recovered from the extreme event in 2017.
+
+```{r recov calc}
+# replace the year in the baseline community with 2024 - as that will allow for a proper merge with the community data for disturbed system
+herb_plot9_Nas_b20$Year <- 2024
+recovery_extent(type = 'compositional', method = 'jaccard', binary = 'TRUE',
+                                comm_t = "Year", t_rec = 2024, comm_d = herb_plot9_Nas,
+           comm_b = herb_plot9_Nas_b20)
+```
+The community seems to be even more dissimilar in 2024 compared to how its composition in 2020.

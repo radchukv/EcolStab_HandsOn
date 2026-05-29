@@ -1,0 +1,406 @@
+---
+title: "Analyses of ecological stability of freshwater communities exposed to insectiside"
+author: "Viktoriia Radchuk"
+date: "26/05/2026"
+output: html_document
+---
+
+```{r, setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', fig.width = 6, fig.height = 6)
+library(knitr)
+library(estar)
+library(tidyverse)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(vegan)
+library(viridis)
+source("custom_aesthetics.R")
+
+label_intensity <- function(intensity, mu) {
+  paste0("Conc = ", intensity, " micro g/L")
+}
+set.seed(123)
+```
+
+# Overview of the data
+
+We illustrate the use of `estar` functions on a dataset from an
+ecotoxicological study about the effects of the chlorpyrifos insecticide
+on a community of aquatic macroinvertebrates [@van_den_brink_effects_1996; @wijngaarden_effects_1996].
+The insecticide negatively affects freshwater
+macroinvertebrates, and, to a lesser degree, zooplankton species. This insecticide was applied at four
+different concentrations (0.1, 0.9, 6, and 44 microg/ L), with two
+replicates per concentration level. Additionally, four replicates were
+used as control, undisturbed systems ('baseline' in `estar`
+terminology). The community is composed of 128 species,
+classified into 5 functional groups: herbivores, detriti-herbivores,
+carnivores, omnivores, and detritivores.
+
+```{r echo = FALSE, message = FALSE,  fig.height = 6, fig.width = 8, fig.cap = "Figure 1. Organism mean count (log axis) of the five functional groups over the course of ecotoxicological experiment. The vertical dashed line identifies the time when the insecticide was applied (at week 0), and facets represent the different concentrations (micro g/L)."}
+(
+  aquacomm_resps.logplot <- aquacomm_fgps |>
+    filter(treat %in% c(0, 0.9, 44)) |>
+    tidyr::pivot_longer(
+      cols = c(herb, detr_herb, carn, omni, detr),
+      names_to = "gp",
+      values_to = "abund"
+    ) |>
+    ## summarize to plot
+    dplyr::group_by(time, treat, gp) |>
+    dplyr::summarize(abund_logmean = log(mean(abund))) |>
+    dplyr::ungroup() |>
+    dplyr::mutate(
+      gp = forcats::fct_recode(
+        factor(gp),
+        Herbivore = "herb",
+        Detr_Herbivore = "detr_herb",
+        Carnivore = "carn",
+        Omnivore = "omni",
+        Detritivore = "detr"
+      )
+    ) |>
+    ggplot(aes(
+      x = time,
+      y = abund_logmean,
+      group = gp,
+      colour = gp
+    )) +
+    geom_line() +
+    geom_point(size = 1) +
+    geom_vline(
+      aes(xintercept = 0),
+      linetype = 2,
+      colour = "black"
+    ) +
+    scale_colour_manual(values = gp_colours_full) +
+    facet_wrap(
+      ~ treat,
+      nrow = 5,
+      labeller = labeller(treat = label_intensity)
+    ) +
+    labs(x = "Time (week)", y = "Mean abundance (log)", colour = "Functional\ngroup") +
+    estar:::theme_estar()
+)
+```
+
+# Functional stability metrics
+
+```{r explor_data}
+aquacomm_fgps
+unique(aquacomm_fgps$time)
+```
+Pay attention to the time periods between samplings!
+
+For this demonstration, let us look at the stability of detritivores in one of the ditches with the highest 
+concentration of insecticide.
+```{r prep_detrit_data}
+detr <- aquacomm_fgps |>
+  select(time, repli, treat, detr) |>
+  filter(treat %in% c(0, 44) & repli %in% c(5,9)) |>
+  select(-repli) |>
+  tidyr::pivot_wider(names_from = treat, values_from = detr, names_prefix = "detr_") |> 
+  mutate_if(is.numeric, ~ ifelse(. == 0, .+1, .)) |>  # 0 abundances will return Inf for resp ratio
+  dplyr::select(time, "statvar_bl" = detr_0, "statvar_db" = detr_44)
+
+```
+
+Let us plot the data for selected ditches to look closer at the dynamics.
+
+```{r, plot_selected, echo = FALSE, message = FALSE, fig.cap = "Figure 2. Abundance of detritivores in one selected disturbed (44 micro g/L) and one reference ditch over the course of ecotoxicological experiment. The vertical black dashed line identifies the time when the insecticide was applied and the vertical violet line - week 28 by which the recovery is expected to occur."}
+detr |>
+   tidyr::pivot_longer(
+      cols = c(statvar_bl, statvar_db),
+      names_to = "gp",
+      values_to = "abund"
+    ) |>
+ggplot(aes(
+      x = time,
+      y = abund,
+      group = gp,
+      colour = gp
+    )) +
+    geom_line(lwd = 2) +
+    geom_point(size = 1) +
+    geom_vline(
+      aes(xintercept = 0),
+      linetype = 2,
+      lwd = 1.2,
+      colour = "black"
+    ) +
+  geom_vline(
+      aes(xintercept = 28),
+      linetype = 4,
+      lwd = 1.2,
+      colour = "darkorchid"
+    ) +
+    scale_colour_manual(values = gp_colours_full) +
+    labs(x = "Time (week)", y = "Mean abundance", colour = "Community") +
+    estar:::theme_estar()
+```
+
+Examples of each function applied to the example dataset. For the
+functions that require a user-defined time step when the system has
+recovered, we use week 28, when all groups seem to have stabilized their
+growth curve based on visual inspection (Fig.1).
+
+### Invariability
+
+Calculated as the inverse of the coefficient of variation of the log response ratio of the state variable in the disturbed and baseline systems.
+
+```{r}
+invariability(
+  type = "functional",
+  response = "lrr",
+  mode = "cv",
+  metric_tf = c(1, 28),
+  vd_i = "statvar_db",
+  td_i = "time",
+  b_data = detr,
+  vb_i = "statvar_bl",
+  tb_i = "time",
+  d_data = detr
+)
+```
+
+
+### Resistance
+
+Resistance calculated in relation to an independent baseline time series (`b = "input"`), as the log response ratio (`res_mode = "lrr"`) of the state variable in the disturbed and baseline systems at the first time step following disturbance (`res_time = "defined"`, `res_t = 1`).
+
+```{r}
+resistance(
+  type = "functional",
+  b = "input",
+  res_mode = "lrr",
+  res_time = "defined",
+  res_t = 1,
+  vd_i = "statvar_db",
+  td_i = "time",
+  d_data = detr,
+  vb_i = "statvar_bl",
+  tb_i = "time",
+  b_data = detr
+)
+```
+
+Resistance calculated in relation to a pre-disturbance baseline (`b = "d"`), composed of the state variable values in the three time steps before disturbance (`b_tf = c(-4, -1)`), as the log-ratio (`res_mode = "lrr"`) one time step after the disturbance (`res_time = "defined"`, `res_t = 1)`).
+
+```{r}
+resistance(
+  type = "functional",
+  b = "d",
+  b_tf = c(-4, -1),
+  res_mode = "lrr",
+  res_time = "defined",
+  res_t = 1,
+  vd_i = "statvar_db",
+  td_i = "time",
+  d_data = detr
+)
+```
+
+### Extent of recovery
+
+Extent of recovery calculated as the log response ratio (`response = "lrr"`) of the state variable in the disturbed and baseline independent systems (`b = "input"`), at a user-defined time step when recovery is assumed to have happened (`t_rec = 28`).
+
+```{r}
+recovery_extent(
+  type = "functional",
+  response = "lrr",
+  b = "input",
+  t_rec = 28,
+  vd_i = "statvar_db",
+  td_i = "time",
+  d_data = detr,
+  vb_i = "statvar_bl",
+  tb_i = "time",
+  b_data = detr
+) 
+```
+
+Extent of recovery calculated as the log response ratio (`response = "lrr"`) of the state variable in the disturbed time-series relative to the pre-disturbance period (`b = "d"`), summarized by the mean value (`summ_mode = "mean"` - default, over a period `b_tf = c(-4, -1)`). The extent of recovery is calculated at the point when we assume recovery have happened (`t_rec = 28`).
+
+```{r}
+recovery_extent(
+  type = "functional",
+  response = "lrr",
+  b = "d",
+  summ_mode = "mean",
+  b_tf = c(-4, -1),
+  t_rec = 28,
+  vd_i = "statvar_db",
+  td_i = "time",
+  d_data = detr
+)
+```
+
+### Rate of recovery
+
+Rate of recovery calculated as the slope of the linear model which predicts the log response ratio of the state variable in the disturbed system compared to the baseline (`b = "input"`) by time (from one week after disturbance and until recovery, `metric_tf = c(1, 28)`).
+
+```{r}
+recovery_rate(
+  type = "functional",
+  response = "lrr",
+  b = "input",
+  metric_tf = c(1, 28),
+  vd_i = "statvar_db",
+  td_i = "time",
+  d_data = detr,
+  vb_i = "statvar_bl",
+  tb_i = "time",
+  b_data = detr
+)
+```
+
+
+### Persistence
+
+Proportion of time over which the state variable stays within 1 standard deviation from the mean of the state variable values from an independent baseline (`b = "input"`) over the period specified by the user, often since application of the disturbance and until the recovery is expected to happen (`metric_tf = c(1, 28)`).
+
+```{r}
+persistence(
+  type = "functional",
+  b = "input",
+  metric_tf = c(1, 28),
+  vd_i = "statvar_db",
+  td_i = "time",
+  d_data = detr,
+  vb_i = "statvar_bl",
+  tb_i = "time",
+  b_data = detr
+)
+```
+
+Proportion of time over which the state variable stays within 1 standard deviation from the mean of the state variable values during a pre-disturbance (`b = "d"`) time period (`b_tf = c(-4, -1)`). Persistence is measured over the period specified by the user, often since application of the disturbance and until the recovery is expected to have happened (`metric_tf = c(0.14, 28)`).
+
+```{r}
+persistence(
+  type = "functional",
+  b = "d",
+  b_tf = c(-4, -1),
+  metric_tf = c(1, 28),
+  vd_i = "statvar_db",
+  td_i = "time",
+  d_data = detr
+)
+```
+
+### Overall Ecological Vulnerability
+
+Area under the curve of the log response ratio (`response = "lrr"`) between the state variable in the disturbed and baseline systems, since shortly after the disturbance - 1 day after and until assumed recovery (`metric_tf = c(0.14, 28)`).
+
+```{r}
+oev(
+  type = "functional",
+  response = "lrr",
+  metric_tf = c(1, 28),
+  vd_i = "statvar_db",
+  td_i = "time",
+  d_data = detr,
+  vb_i = "statvar_bl",
+  tb_i = "time",
+  b_data = detr
+)
+```
+
+# Compositional stability
+
+Calculated using community compositional data for the disturbed and a baseline (reference) community. To do so, the functions call the `vegdist` function (from the `vegan` package), to which we can pass on the required `method` and `binary` arguments. Here, we use the default settings for arguments `method` and `binary`, i.e. the Bray-Curtis dissimilarity.
+
+```{r com_data_prep}
+# Reformatting the macroinvertebrate community long-format data into 
+# community composition data
+comm_data <- aquacomm_fgps |>
+    dplyr::group_by(time, treat) |>
+    dplyr::filter(treat %in% c(0, 44)) |>
+    dplyr::summarize_at(vars(herb, detr_herb, carn, omni, detr),
+                        mean) |>
+    dplyr::ungroup()
+
+control_comm <- comm_data |>
+        dplyr::filter(treat == 0) |>
+        dplyr::select(-treat)
+dist_comm <- comm_data |>
+        dplyr::filter(treat == 44) |>
+        dplyr::select(-treat)
+```
+
+
+### Invariability
+
+Invariability calculated as the coefficient of variation of dissimilarity between disturbed and control systems since one week after disturbance and until recovery is assumed to have happened (`metric_tf = c(1, 28)`).
+
+```{r eval=FALSE}
+invariability(
+  type = "compositional",
+  metric_tf = c(1, 28),
+  comm_d = dist_comm,
+  comm_b = control_comm,
+  comm_t = "time")
+```
+
+### Resistance
+
+Resistance calculated one week after pulse disturbance (`res_time = "defined"`, `res_t = 1`). 
+
+```{r eval=FALSE}
+resistance(type = "compositional",
+          res_time = "defined",
+          res_t = 1,
+          comm_d = dist_comm,
+          comm_b = control_comm,
+          comm_t = "time")
+```
+
+### Rate of recovery
+
+Rate of recovery of the community over the period from the first week after the disturbance and an assumed recovery at week 28 (`metric_tf = c(1, 28)`).
+
+```{r}
+recovery_rate(type = "compositional",
+              metric_tf = c(1, 28),
+              comm_d = dist_comm,
+              comm_b = control_comm,
+              comm_t = "time")
+```
+ 
+### Extent of recovery
+
+Since we assume recovery happened by week 28, we calculate its extent by that time (`t_rec = 28`).
+
+```{r}
+recovery_extent(type = "compositional",
+          t_rec = 28,
+          comm_d = dist_comm,
+          comm_b = control_comm,
+          comm_t = "time")
+```
+
+### Persistence
+
+Here, the community is considered to be persistent if it's dissimilarity with the undisturbed, baseline community stays between 0.5 and 0.9 (`low_lim = 0.5, high_lim = 0.9`). We compute the proportion of time the disturbed community stayed in this persistence "zone" from one week after disturbance and until assumed recovery (week 28, `metric_tf = c(1, 28)`).
+
+```{r}
+persistence(type = "compositional",
+            b = "input",
+            metric_tf = c(1, 28),
+            comm_d = dist_comm,
+            comm_b = control_comm,
+            comm_t = "time",
+            low_lim = 0.5,
+            high_lim = 0.9)
+```
+
+### Overall Ecological Vulnerability
+
+```{r}
+oev(type = "compositional",
+    metric_tf = c(1, 28),
+    comm_d = dist_comm,
+    comm_b = control_comm,
+    comm_t = "time")
+```
+
+
